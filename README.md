@@ -59,9 +59,44 @@ python scripts/test_rag.py       # 测试政策 RAG 问答
 python scripts/test_agent.py     # 测试 Agent 工具调用链路
 ```
 
+> 提示：模拟业务数据中的"签收日期"固定为 2026 年附近的时间点，RAG 检索、规则引擎判定均以运行当天的 `date.today()` 计算。若你今天提问"能否无理由退货"，结果会随实际日期推移而变化（这正是规则引擎而非 LLM 心算的原因）。如需稳定演示效果，可自行修改 `data/external/orders.csv` 中的签收日期。
+
 ---
 
-## 四、演示脚本（按顺序提问，效果最佳）
+## 四、免费在线部署（Streamlit Community Cloud）
+
+想让面试官/朋友**点链接直接体验**，可用 [Streamlit Community Cloud](https://share.streamlit.io/)（免费，需 GitHub 账号）。
+
+### 步骤
+
+1. **把本项目推送到你的 GitHub 仓库**（代码内已包含预构建向量索引 `faiss_db/*.pkl`，无需在云端重建）。
+2. 打开 [share.streamlit.io](https://share.streamlit.io/) → 用 GitHub 账号登录 → **New app**。
+3. 选择仓库 / 分支(`main`) / 入口文件 `agent_app.py` → **Deploy**。
+4. 首次部署会自动 `pip install -r requirements.txt`，约 3~5 分钟。
+5. 部署完成后进入 **⚙️ Settings → Secrets**，填入：
+   ```toml
+   DASHSCOPE_API_KEY = "你的阿里云百炼 API Key"
+   ```
+6. 保存后点击 **Rerun**，即可获得公网访问链接。
+
+### 免费版注意事项
+
+- 免费版闲置一段时间会休眠，首次访问需等待冷启动（约 1~3 分钟）。
+- 免费版对同一账号的总资源有配额，适合面试展示，不适合高并发生产使用。
+- API Key 存在云端 Secrets 中，**不会**出现在代码或仓库里；建议使用阿里云百炼的免费试用额度，面试期过后可随时在控制台停用该 Key。
+
+### 云端与本地差异说明
+
+| 项目 | 说明 |
+|---|---|
+| 向量索引 | 已随仓库提交 `faiss_db/{faiss_index,bm25_index,file_hashes}.pkl/yml`，云端直接加载，无需重建 |
+| 文件系统 | 云端文件系统临时（重启即恢复为 git 快照），`data/` 变更后无法持久化重建索引 |
+| 会话记忆 | 云端重启会清空会话历史（Streamlit 本身无持久化），属预期行为 |
+| 新增文档 | 生产场景应把知识库变更做成"云端重建任务"或接入数据库；Demo 场景直接改仓库内 `data/` 后重新推送即可 |
+
+---
+
+## 五、演示脚本（按顺序提问，效果最佳）
 
 当前演示数据设定"今天"为 2026-09-02，登录用户 `1001`。
 
@@ -76,7 +111,7 @@ python scripts/test_agent.py     # 测试 Agent 工具调用链路
 
 ---
 
-## 五、项目结构
+## 六、项目结构
 
 ```
 .
@@ -103,7 +138,7 @@ python scripts/test_agent.py     # 测试 Agent 工具调用链路
 
 ---
 
-## 六、RAG 检索链路
+## 七、RAG 检索链路
 
 ```
 用户问题
@@ -119,7 +154,7 @@ python scripts/test_agent.py     # 测试 Agent 工具调用链路
 
 ---
 
-## 七、后续可扩展
+## 八、后续可扩展
 
 - [ ] 接入真实订单/物流/退款 API（替换 CSV 读取层即可）
 - [ ] 多轮会话持久化（SQLite）+ 用户实体槽位记忆
@@ -129,6 +164,6 @@ python scripts/test_agent.py     # 测试 Agent 工具调用链路
 
 ---
 
-## 八、License
+## 九、License
 
 MIT

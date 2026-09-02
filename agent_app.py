@@ -12,12 +12,18 @@ import warnings
 
 import streamlit as st
 
-from agent import chat_service
-from ui import render, session
 from utils.config_handler import faiss_conf
 from utils.path_tool import get_abs_path
+from utils.secrets_handler import load_cloud_secrets
 
 warnings.filterwarnings("ignore", message=".*coroutine.*expire_cache.*")
+
+# 同步 Streamlit Cloud secrets 到环境变量（必须在导入 chat_service 之前执行，
+# 因为 model.factory 会在 import 期创建 chat_model 并读取 API Key）
+load_cloud_secrets()
+
+from agent import chat_service  # noqa: E402
+from ui import render, session  # noqa: E402
 
 
 def _encode_image(img_path: str) -> tuple[str | None, str]:

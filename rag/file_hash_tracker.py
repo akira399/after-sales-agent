@@ -45,6 +45,16 @@ class FileHashTracker:
             return None
 
     # ------------------------------------------------------------------
+    # 相对路径 key（保证跨机器可移植，避免他人/云端 clone 后误判全量重建）
+    # ------------------------------------------------------------------
+    def _make_key(self, abs_path: str) -> str:
+        try:
+            rel = os.path.relpath(abs_path, get_abs_path("."))
+        except ValueError:  # 跨盘符（Windows）无法 relpath，退回绝对路径
+            return abs_path
+        return rel.replace("\\", "/")
+
+    # ------------------------------------------------------------------
     # 加载 / 保存
     # ------------------------------------------------------------------
     def load_previous(self) -> None:
@@ -69,9 +79,12 @@ class FileHashTracker:
     def scan(self, file_paths: list[str]) -> tuple[list[str], list[str], list[str]]:
         """
         扫描文件列表，返回 (new_or_changed, unchanged, deleted)。
-        - new_or_changed: 新增或内容变化的文件
-        - unchanged: 内容未变的文件
-        - deleted: 上次存在但本次不在列表中的文件
+        - new_or_changed: 新增或内容变化的文件（原路径）
+        - unchanged: 内容未变的文件（原路径）
+        - deleted: 上次存在但本次不在列表中的文件（绝对路径）
+
+        哈希记录的 key 统一使用相对项目根的路径（见 _make_key），
+        保证在不同机器 / 云端部署时不会因绝对路径不同而误判全量重建。
         """
         self.load_previous()
         self._current = {}
@@ -80,20 +93,28 @@ class FileHashTracker:
 
         for fp in sorted(file_paths):
             abs_path = os.path.abspath(fp)
+            key = self._make_key(abs_path)
             md5 = self.compute_md5(abs_path)
             if md5 is None:
                 new_or_changed.append(fp)
-                self._current[fp] = "__unknown__"
+                self._current[key] = "__unknown__"
                 continue
-            self._current[fp] = md5
+            self._current[key] = md5
 
-            prev_md5 = self._previous.get(fp)
+            prev_md5 = self._previous.get(key)
             if prev_md5 == md5:
                 unchanged.append(fp)
             else:
                 new_or_changed.append(fp)
 
-        deleted = [fp for fp in self._previous if fp not in self._current]
+        # deleted：把相对 key 转回绝对路径，便于调用方直接用于文件删除
+        deleted = []
+        for key in self._previous:
+            if key not in self._current:
+                if os.path.isabs(key):
+                    deleted.append(key)  # 兼容历史绝对路径记录
+                else:
+                    deleted.append(get_abs_path(key))
 
         return new_or_changed, unchanged, deleted
 
@@ -101,5 +122,8 @@ class FileHashTracker:
         """从哈希记录中移除单个文件，用于手动删除文档后保持一致性。"""
         self.load_previous()
         self._current = dict(self._previous)
-        self._current.pop(file_path, None)
+        key = self._make_key(os.path.abspath(file_path))
+        # 同时兼容历史绝对路径记录
+        self._current.pop(key, None)
+        self._current.pop(os.path.abspath(file_path), None)
         self.save()

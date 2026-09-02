@@ -24,6 +24,10 @@ class VectorStoreService:
         except FileNotFoundError:
             self.vector_store = self._create_empty_faiss()
             logger.info(f"[VectorStoreService] 创建新的 FAISS 向量库：{self.persist_directory}")
+        except Exception as e:
+            # 跨 Python 版本/平台 pickle 不兼容等异常：优雅降级为空库，避免应用崩溃
+            logger.warning(f"[VectorStoreService] 加载索引失败({e})，回退空向量库，可运行 load_document() 重建")
+            self.vector_store = self._create_empty_faiss()
 
         logger.info(f"[VectorStoreService] 向量库持久化目录（绝对路径）：{self.persist_directory}")
 

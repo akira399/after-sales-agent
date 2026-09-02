@@ -1,6 +1,5 @@
 """UI 渲染层 — 只负责显示，不操作状态、不调用 Agent。"""
 import base64
-import json
 import os
 
 import streamlit as st
@@ -104,46 +103,8 @@ class AgentStreamRenderer:
             return
         self._shown_tool_results.add(call_id)
         label = TOOL_LABELS.get(name, name)
-
-        if name in ("detect_cotton_foreign_matter", "classify_cotton_quality"):
-            self._render_cv_result(name, label, result_text)
-        else:
-            with st.expander(f"工具返回：{label}", expanded=False):
-                st.text(result_text[:2000])
-
-    def _render_cv_result(self, name: str, label: str, result_text: str):
-        try:
-            data = json.loads(result_text)
-            annotated_b64 = data.get("annotated_image_base64")
-            total = data.get("total", 0)
-            detections = data.get("detections", [])
-            if name == "detect_cotton_foreign_matter":
-                if detections:
-                    parts = [f"{d['class']}({d['confidence']}%)" for d in detections]
-                    summary_text = f"检测到 {total} 个异物：" + "、".join(parts)
-                else:
-                    summary_text = "未检测到异物"
-            else:
-                grade = data.get("grade", "?")
-                confidence = data.get("confidence", 0)
-                summary_text = f"品质分级：{grade}（置信度 {confidence}%）"
-
-            with st.expander(f"工具返回：{label}", expanded=True):
-                st.text(summary_text)
-                if annotated_b64:
-                    self.annotated_images.append(annotated_b64)
-                    img_bytes = base64.b64decode(annotated_b64)
-                    st.image(img_bytes)
-                    st.download_button(
-                        label="下载标注图",
-                        data=img_bytes,
-                        file_name=f"detect_{data.get('image', 'result')}.jpg",
-                        mime="image/jpeg",
-                        key=f"dl_{len(self.annotated_images)}_{hash(annotated_b64[:50])}",
-                    )
-        except (json.JSONDecodeError, TypeError):
-            with st.expander(f"工具返回：{label}", expanded=False):
-                st.text(result_text[:500])
+        with st.expander(f"工具返回：{label}", expanded=False):
+            st.text(result_text[:2000])
 
     @staticmethod
     def _render_final(content: str) -> str:

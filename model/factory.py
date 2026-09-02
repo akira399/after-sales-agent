@@ -6,15 +6,16 @@ from langchain_core.embeddings import Embeddings
 from langchain_openai import ChatOpenAI
 from langchain_community.embeddings import DashScopeEmbeddings
 from utils.config_handler import rag_conf
+from utils.secrets_handler import get_dashscope_api_key
 
 # 自动加载项目根目录 .env（密钥不写死在代码/config 中）
 load_dotenv()
 
 
 def _resolve_dashscope_api_key() -> Optional[str]:
-    env_value = os.getenv("DASHSCOPE_API_KEY")
-    if isinstance(env_value, str) and env_value.strip():
-        return env_value.strip()
+    key = get_dashscope_api_key()
+    if key:
+        return key
 
     config_value = rag_conf.get("dashscope_api_key")
     if isinstance(config_value, str) and config_value.strip():
