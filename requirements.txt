@@ -1,0 +1,35 @@
+# App
+streamlit>=1.32,<2.0
+pyyaml>=6.0,<7.0
+requests>=2.32,<3.0
+python-dotenv>=1.0,<2.0
+
+# Agent / LLM
+langchain>=1.3,<2.0
+langgraph>=1.2,<2.0
+langchain-core>=1.5,<2.0
+langchain-community>=0.4,<1.0
+langchain-text-splitters>=1.1,<2.0
+langchain-openai>=1.3,<2.0
+dashscope>=1.26,<2.0
+
+# Retrieval / RAG
+faiss-cpu>=1.14,<2.0
+pypdf>=6.0,<7.0
+rank-bm25>=0.2.2,<0.3.0
+jieba>=0.42,<1.0
+
+# 通用（numpy 不设上限：faiss-cpu 与科学计算生态已适配 numpy 2.x）
+numpy>=1.26
+Pillow>=10.0,<11.0
+tqdm>=4.66,<5.0
+
+# =====================================================================
+# CV / multimodal（本版已裁剪，保留注释以备用）
+# 若日后启用退货破损图审核，取消下方注释并安装对应 CUDA 版 torch：
+# transformers>=4.44,<5.0
+# torch>=2.3,<3.0
+# torchvision>=0.18,<1.0
+# opencv-python-headless>=4.10,<5.0
+# ultralytics>=8.2,<9.0
+# =====================================================================

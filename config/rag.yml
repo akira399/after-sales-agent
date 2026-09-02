@@ -1,0 +1,7 @@
+chat_model_name: qwen3.7-plus
+embedding_model_name: text-embedding-v4
+rerank_model_name: qwen3-rerank
+
+# Leave keys empty in Git-tracked config and provide them via env vars:
+# DASHSCOPE_API_KEY
+dashscope_api_key: ""

@@ -1,0 +1,2 @@
+# 模拟业务数据目录（真实场景应替换为订单/物流/退款系统的 API 客户端）
+external_data_dir: data/external

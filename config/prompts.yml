@@ -1,0 +1,4 @@
+main_prompt_path: prompts/main_prompt.txt
+query_understand_prompt_path: prompts/query_understand.txt
+kb_retrieve_qa_prompt_path: prompts/kb_retrieve_qa.txt
+ticket_prompt_path: prompts/ticket_prompt.txt

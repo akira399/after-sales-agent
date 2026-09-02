@@ -1,0 +1,13 @@
+collection_name: agent
+persist_directory: faiss_db
+k: 10
+data_path: data
+allow_knowledge_file_type: ["txt", "pdf"]
+
+chunk_size: 2000
+chunk_overlap: 100
+separators: ["\n\n", "\n", ".", "!", "?", "。", "！", "？", " ", ""]
+
+# BM25 / 混合检索参数
+bm25_weight: 0.5
+rrf_k: 60
