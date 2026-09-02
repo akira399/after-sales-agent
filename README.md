@@ -33,7 +33,11 @@
 
 ---
 
-## 三、快速开始
+## 三、模型接入（重要：先读这段）
+
+本应用支持两种模型接入方式，**Key 永不进入代码/仓库/日志**：
+
+### 方式 A：本地运行，配置自己的 Key（最简单）
 
 ```bash
 # 1. 创建虚拟环境并安装依赖（Python 3.10+，本项目实测 3.14 可用）
@@ -43,16 +47,28 @@ pip install -r requirements.txt
 
 # 2. 配置密钥（阿里云百炼 DashScope）
 cp .env.example .env
-# 编辑 .env 填入 DASHSCOPE_API_KEY
+# 编辑 .env 填入 DASHSCOPE_API_KEY（仅本机文件，已被 .gitignore 排除）
 
-# 3. 构建知识库向量索引
+# 3. 构建知识库向量索引（首次需要；已 clone 本仓库自带索引可跳过）
 python -m rag.vector_store
 
 # 4. 启动应用
 streamlit run agent_app.py
 ```
 
-连通性自检（可选，验证 key 是否可用）：
+### 方式 B：在线 Demo / 让别人体验 —— 访问者自带 Key（推荐）
+
+部署到公网后，访问者在左侧 **⚙️ 模型接入** 面板**填写自己的** DashScope / OpenAI 兼容 API Key 即可使用：
+
+- Key 仅保存在**当前浏览器会话**中（`st.session_state`），服务器不存储、不写日志；
+- 多人访问**各用各的 Key**，互不串用，不会消耗部署者额度；
+- 未填写 Key 前页面只展示项目介绍，不发起任何模型调用；
+- 若部署者在 `.env` / 云端 Secrets 中配置了平台 Key，也**不会自动启用**——需访问者显式点击"改用平台预置 Key"（见下）。
+
+> 因此，如果你想开放一个免费 Demo 给面试官体验，**不需要**把任何 Key 放进云端 Secrets——访问者用自己的 Key 即可。
+
+### 快速连通性自检（CLI，可选）
+
 ```bash
 python scripts/check_api.py      # 测试 chat / embedding / rerank
 python scripts/test_rag.py       # 测试政策 RAG 问答
@@ -73,17 +89,25 @@ python scripts/test_agent.py     # 测试 Agent 工具调用链路
 2. 打开 [share.streamlit.io](https://share.streamlit.io/) → 用 GitHub 账号登录 → **New app**。
 3. 选择仓库 / 分支(`main`) / 入口文件 `agent_app.py` → **Deploy**。
 4. 首次部署会自动 `pip install -r requirements.txt`，约 3~5 分钟。
-5. 部署完成后进入 **⚙️ Settings → Secrets**，填入：
-   ```toml
-   DASHSCOPE_API_KEY = "你的阿里云百炼 API Key"
-   ```
-6. 保存后点击 **Rerun**，即可获得公网访问链接。
+5. 部署完成后即可分享链接。访问者打开后，在侧栏**填入自己的 API Key** 即可使用。
+
+### 部署者要不要配 Secrets？（关键）
+
+**推荐：不要配。** 访问者自带 Key 模式已覆盖绝大多数场景：
+
+| 场景 | 做法 |
+|---|---|
+| 面试官体验 Demo | 部署者**不配** Secrets，访问者填自己的 Key，零额度风险 |
+| 仅自己/团队私有使用 | 可在 Settings → Secrets 填 `DASHSCOPE_API_KEY`，访问者点击"改用平台预置 Key"启用 |
+| 完全离线体验 | 不需要（本应用依赖在线 LLM API） |
+
+即使配了平台 Key，也需要访问者**显式点击**才会启用——应用不会静默消耗部署者额度。
 
 ### 免费版注意事项
 
 - 免费版闲置一段时间会休眠，首次访问需等待冷启动（约 1~3 分钟）。
 - 免费版对同一账号的总资源有配额，适合面试展示，不适合高并发生产使用。
-- API Key 存在云端 Secrets 中，**不会**出现在代码或仓库里；建议使用阿里云百炼的免费试用额度，面试期过后可随时在控制台停用该 Key。
+- 无论哪种模式，Key 都不出现在代码或仓库中；访问者 Key 仅存其浏览器会话。
 
 ### 云端与本地差异说明
 
@@ -118,27 +142,43 @@ python scripts/test_agent.py     # 测试 Agent 工具调用链路
 ├─ agent_app.py              # Streamlit 入口
 ├─ agent/
 │  ├─ react_agent.py         # LangGraph ReAct Agent 编排
-│  ├─ chat_service.py        # 事件流服务层（stream_start→tool_call→tool_result→final_answer→stream_end）
+│  ├─ chat_service.py        # 事件流服务层（按会话缓存 Agent，多 Key 隔离）
 │  └─ tools/
 │     ├─ agent_tools.py      # 售后工具集（订单/物流/退款/政策/工单）
 │     ├─ return_rules.py     # ★ 合规规则引擎（纯函数，可单测）
-│     └─ middleware.py       # 工具监控 + 工单模式动态切换 prompt
+│     └─ middleware.py       # 工具监控 + 日志脱敏 + 工单模式动态切换 prompt
 ├─ rag/                      # 检索链路
 │  ├─ rag_service.py         # 改写→混合检索→RRF→Rerank→上下文组装
 │  ├─ vector_store.py        # FAISS + 增量索引
 │  ├─ bm25_index.py          # BM25 稀疏检索（jieba 分词）
 │  ├─ reranker.py            # qwen3-rerank 精排
-│  └─ file_hash_tracker.py   # MD5 增量索引
+│  └─ file_hash_tracker.py   # MD5 增量索引（相对路径 key，跨机器可移植）
+├─ model/
+│  ├─ runtime_config.py      # ★ 会话级模型配置（访问者 Key / 平台 Key 双模式）
+│  └─ factory.py             # 按会话配置动态构建 Chat/Embedding
 ├─ prompts/                  # 提示词（客服人设/查询理解/政策QA/工单生成）
 ├─ data/                     # 知识库文档 + 模拟业务数据
-├─ model/factory.py          # LLM/Embedding 工厂（自动加载 .env）
-├─ ui/                       # Streamlit 渲染层
+├─ faiss_db/                 # 预构建向量索引（已入库，云端直接加载）
+├─ ui/
+│  ├─ model_panel.py         # ★ 模型接入面板（自填 Key + 连接测试）
+│  ├─ render.py              # 渲染层
+│  └─ session.py             # 会话状态
 └─ scripts/                  # 连通性与冒烟测试脚本
 ```
 
 ---
 
-## 七、RAG 检索链路
+## 七、安全设计说明
+
+1. **Key 零存储**：API Key 只存在于浏览器 `session_state`（访问者模式）或部署者环境变量（平台模式），代码仓库与日志中绝无明文 Key。
+2. **日志脱敏**：`middleware.py` 对工具入参做递归脱敏，敏感字段（api_key/token/secret/…）一律替换为 `***REDACTED***`。
+3. **多用户隔离**：Agent/RAG 组件按会话缓存，配置指纹变化即重建；每个访问者只用自己的 Key。
+4. **平台 Key 不自动启用**：即使部署者配置了 `.env`/Secrets，也需要访问者显式点击"改用平台预置 Key"，防止公开 Demo 被静默刷额度。
+5. **gitignore 防护**：`.env`、`*.log`、`logs/` 均不入库；提交前可用 `git ls-files | grep -E "\.env$|\.log$"` 自查。
+
+---
+
+## 九、RAG 检索链路
 
 ```
 用户问题
@@ -154,7 +194,7 @@ python scripts/test_agent.py     # 测试 Agent 工具调用链路
 
 ---
 
-## 八、后续可扩展
+## 十、后续可扩展
 
 - [ ] 接入真实订单/物流/退款 API（替换 CSV 读取层即可）
 - [ ] 多轮会话持久化（SQLite）+ 用户实体槽位记忆
@@ -164,6 +204,6 @@ python scripts/test_agent.py     # 测试 Agent 工具调用链路
 
 ---
 
-## 九、License
+## 十一、License
 
 MIT
