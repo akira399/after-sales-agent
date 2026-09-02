@@ -11,19 +11,25 @@ from typing import Optional
 import dashscope
 from langchain_core.documents import Document
 
-from model.factory import _resolve_dashscope_api_key
+from model.runtime_config import ModelConfig
 from utils.config_handler import rag_conf
 from utils.logger_handler import logger
 
 
 class RerankerService:
-    """DashScope TextReRank 封装，基于 qwen3-rerank 做候选片段精排。"""
+    """DashScope TextReRank 封装，基于 qwen3-rerank 做候选片段精排。
 
-    def __init__(self):
-        api_key = _resolve_dashscope_api_key()
-        if api_key:
-            dashscope.api_key = api_key
-        self._model = rag_conf.get("rerank_model_name", "qwen3-rerank")
+    模型与 Key 绑定到传入的 ModelConfig，不设进程级全局 Key，
+    保证多会话（每个访问者自带 Key）互不串用。
+    """
+
+    def __init__(self, model_config: Optional[ModelConfig] = None):
+        self._model = (model_config.rerank_model if model_config else None) or rag_conf.get(
+            "rerank_model_name", "qwen3-rerank"
+        )
+        self._api_key = (model_config.api_key.strip() if model_config and model_config.api_key else None)
+        if self._api_key:
+            dashscope.api_key = self._api_key
 
     def rerank(
         self,
@@ -40,13 +46,17 @@ class RerankerService:
 
         texts = [d.page_content for d in docs]
 
-        resp = dashscope.TextReRank.call(
-            model=self._model,
-            query=query,
-            documents=texts,
-            top_n=top_n,
-            return_documents=True,
-        )
+        call_kwargs: dict = {
+            "model": self._model,
+            "query": query,
+            "documents": texts,
+            "top_n": top_n,
+            "return_documents": True,
+        }
+        if self._api_key:
+            call_kwargs["api_key"] = self._api_key
+
+        resp = dashscope.TextReRank.call(**call_kwargs)
 
         if resp.status_code != HTTPStatus.OK:
             logger.warning(f"[Rerank] 调用失败 code={resp.status_code} msg={resp.message}，回退原始排序")

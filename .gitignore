@@ -25,6 +25,7 @@ env/
 # 运行时产物
 logs/
 md5.text
+*.log
 
 # 向量索引：预构建索引需要提交进 git（供 Streamlit Cloud 等无状态环境加载）
 # faiss_db/ 内仅提交索引三件套，其他临时文件忽略

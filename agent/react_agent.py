@@ -3,7 +3,8 @@ import os
 from typing import Optional
 
 from langchain.agents import create_agent
-from model.factory import chat_model
+from model.factory import build_chat_model
+from model.runtime_config import ModelConfig
 from utils.prompt_loader import load_main_prompt
 from agent.tools.agent_tools import (search_policy, query_order, query_user_orders, query_logistics,
                                      query_refund, check_return_window, judge_freight, check_warranty,
@@ -26,9 +27,11 @@ def _encode_image(image_path: str) -> tuple[str, str] | tuple[None, None]:
 
 
 class ReactAgent:
-    def __init__(self):
+    def __init__(self, model_config: Optional[ModelConfig] = None):
+        # 按会话配置构建 chat 模型；未传则回退当前会话/环境配置
+        self.model_config = model_config
         self.agent = create_agent(
-            model=chat_model,
+            model=build_chat_model(model_config),
             system_prompt=load_main_prompt(),
             tools=[search_policy, query_order, query_user_orders, query_logistics,
                    query_refund, check_return_window, judge_freight, check_warranty,

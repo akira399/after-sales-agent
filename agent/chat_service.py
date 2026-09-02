@@ -2,6 +2,11 @@
 
 事件契约（按顺序）：
   stream_start  →  tool_call*  →  tool_result*  →  final_answer?  →  stream_end
+
+会话隔离设计：
+  不使用 @st.cache_resource 做进程级缓存（否则多访问者共享同一 Agent/API Key）。
+  Agent 与 RAG 实例缓存在 st.session_state，按模型配置指纹失效重建，
+  保证每位访问者只用自己的 Key。
 """
 from typing import Generator
 
@@ -9,12 +14,39 @@ import streamlit as st
 from langchain_core.messages import AIMessage, ToolMessage
 
 from agent.react_agent import ReactAgent
+from model.runtime_config import ModelConfig, get_session_config
+from rag.rag_service import RagSummarizeService
 from utils.logger_handler import logger
 
 
-@st.cache_resource
-def _get_agent() -> ReactAgent:
-    return ReactAgent()
+def _ensure_session_components() -> tuple[ReactAgent, ModelConfig]:
+    """确保当前会话已构建 Agent 与 RAG 实例（按配置指纹重建）。
+
+    返回 (agent, config)。进程内可缓存的最重资源是向量索引，
+    这里按会话缓存 agent/rag，指纹变化才重建。
+    """
+    cfg = get_session_config()
+    fp = cfg.fingerprint()
+
+    agent = st.session_state.get("agent_obj")
+    if agent is not None and st.session_state.get("agent_fp") == fp:
+        return agent, cfg
+
+    logger.info(f"[chat_service] 按会话配置重建 Agent/RAG（{cfg.display_label()}）")
+    # 先构建 RAG（search_policy 工具通过 session_state["rag_obj"] 获取当前会话实例）
+    rag = RagSummarizeService(model_config=cfg)
+    st.session_state["rag_obj"] = rag
+    # 再构建 Agent
+    agent = ReactAgent(model_config=cfg)
+    st.session_state["agent_obj"] = agent
+    st.session_state["agent_fp"] = fp
+    return agent, cfg
+
+
+def _get_session_agent() -> ReactAgent:
+    """兼容性入口：返回当前会话 Agent（会话不存在时按默认配置创建）。"""
+    agent, _ = _ensure_session_components()
+    return agent
 
 
 def run_agent(
@@ -27,7 +59,7 @@ def run_agent(
 
     始终以 stream_end 事件收尾，调用方据此判断流是否完整结束。
     """
-    agent = _get_agent()
+    agent, cfg = _ensure_session_components()
 
     try:
         final_content = ""

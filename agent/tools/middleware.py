@@ -9,6 +9,33 @@ from langgraph.types import Command
 from utils.logger_handler import logger
 from utils.prompt_loader import load_ticket_prompt
 
+# 敏感字段：日志打印前对含这些 key 的值做脱敏，防止 API Key 等写入日志
+_SENSITIVE_KEYS = ("api_key", "apikey", "key", "token", "secret", "authorization", "password")
+
+
+def _sanitize(value, depth: int = 0) -> object:
+    """递归脱敏：任何 dict/list 中出现敏感键名对应值一律打码。"""
+    if isinstance(value, dict):
+        out = {}
+        for k, v in value.items():
+            if isinstance(k, str) and k.lower() in _SENSITIVE_KEYS and depth < 3:
+                out[k] = "***REDACTED***"
+            else:
+                out[k] = _sanitize(v, depth + 1)
+        return out
+    if isinstance(value, list):
+        return [_sanitize(v, depth + 1) for v in value]
+    return value
+
+
+def _safe_repr(value, max_len: int = 500) -> str:
+    """转字符串并截断，避免超长内容刷屏日志。"""
+    try:
+        s = str(_sanitize(value))
+    except Exception:
+        s = "<unprintable>"
+    return s[:max_len] if len(s) > max_len else s
+
 
 # 缓存工单提示词文本，避免重复读取文件
 _TICKET_PROMPT = load_ticket_prompt()
@@ -20,7 +47,7 @@ def monitor_tool(
         handler: Callable[[ToolCallRequest], ToolMessage | Command],
 ) -> ToolMessage | Command:
     logger.info(f"[tool monitor]执行工具：{request.tool_call['name']}")
-    logger.info(f"[tool monitor]传入参数：{request.tool_call['args']}")
+    logger.info(f"[tool monitor]传入参数：{_safe_repr(request.tool_call.get('args', {}))}")
 
     try:
         result = handler(request)
@@ -53,7 +80,7 @@ def log_before_model(
             last_content = " ".join(text_parts).strip()
         else:
             last_content = str(content).strip()
-    logger.debug(f"[log_before_model]{type(last_msg).__name__} | {last_content}")
+    logger.debug(f"[log_before_model]{type(last_msg).__name__} | {_safe_repr(last_content, max_len=300)}")
 
     # 工单模式：替换 system prompt 为工单生成角色
     if runtime.context.get("report"):

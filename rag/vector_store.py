@@ -6,7 +6,8 @@ from langchain_community.docstore.in_memory import InMemoryDocstore
 from langchain_community.vectorstores import FAISS
 from langchain_core.documents import Document
 from utils.config_handler import faiss_conf
-from model.factory import embed_model
+from model.factory import build_embed_model
+from model.runtime_config import get_session_config
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from utils.path_tool import get_abs_path
 from utils.file_handler import pdf_loader, txt_loader, listdir_with_allowed_type
@@ -61,7 +62,7 @@ class VectorStoreService:
         with open(self._index_path(), "rb") as f:
             data = pickle.load(f)
         return FAISS(
-            embedding_function=embed_model,
+            embedding_function=build_embed_model(),
             index=faiss.deserialize_index(data["index"]),
             docstore=data["docstore"],
             index_to_docstore_id=data["index_to_docstore_id"],
@@ -74,7 +75,7 @@ class VectorStoreService:
         docstore = InMemoryDocstore()
         index_to_docstore_id: dict[int, str] = {}
         return FAISS(
-            embedding_function=embed_model,
+            embedding_function=build_embed_model(),
             index=index,
             docstore=docstore,
             index_to_docstore_id=index_to_docstore_id,

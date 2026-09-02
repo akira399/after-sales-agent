@@ -14,7 +14,8 @@ from langchain_core.documents import Document
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
 
-from model.factory import chat_model
+from model.factory import build_chat_model
+from model.runtime_config import ModelConfig
 from rag.bm25_index import Bm25IndexService
 from rag.reranker import RerankerService
 from rag.vector_store import VectorStoreService
@@ -23,7 +24,7 @@ from utils.prompt_loader import load_kb_retrieve_qa_prompts, load_query_understa
 
 
 class RagSummarizeService(object):
-    def __init__(self):
+    def __init__(self, model_config: Optional[ModelConfig] = None):
         self._k = int(faiss_conf.get("k", 5))
         self._bm25_weight = float(faiss_conf.get("bm25_weight", 0.5))
         self._rrf_k = int(faiss_conf.get("rrf_k", 60))
@@ -32,8 +33,12 @@ class RagSummarizeService(object):
         self._vs = self.vector_store.vector_store
         self._bm25 = Bm25IndexService()
         self._bm25.load()
-        self._reranker = RerankerService()
+        self._reranker = RerankerService(model_config=model_config)
         self.system_prompt_text = load_kb_retrieve_qa_prompts()
+
+        # 模型对象绑定到传入的会话配置（未传则按当前会话/环境动态获取）
+        self.model = build_chat_model(model_config)
+        self.model_config = model_config
 
         self._query_understand_prompt = ChatPromptTemplate.from_messages(
             [
@@ -42,7 +47,7 @@ class RagSummarizeService(object):
             ]
         )
         self._query_understand_chain = (
-            self._query_understand_prompt | chat_model | StrOutputParser()
+            self._query_understand_prompt | self.model | StrOutputParser()
         )
 
         self.prompt_template = ChatPromptTemplate.from_messages(
@@ -61,7 +66,6 @@ class RagSummarizeService(object):
                 ),
             ]
         )
-        self.model = chat_model
         self.chain = self.prompt_template | self.model | StrOutputParser()
 
     def reload_bm25(self) -> None:

@@ -32,8 +32,47 @@ WARRANTY_MONTHS = {
     "智能手表WatchX": 24,
 }
 
-_rag = RagSummarizeService()
+# 模块级 RAG 单例被移除：改为按会话获取，避免多用户共享同一 API Key
 _external_dir = get_abs_path(agent_conf.get("external_data_dir", "data/external"))
+
+# CLI/脚本环境的进程级缓存（Streamlit 环境由 chat_service 注入会话实例）
+_process_rag: RagSummarizeService | None = None
+_process_rag_fp: str | None = None
+
+
+def get_current_rag() -> RagSummarizeService:
+    """获取当前生效的 RAG 检索服务（会话隔离）。
+
+    - Streamlit 运行时：优先使用 chat_service 注入到 st.session_state 的实例，
+      该实例绑定访问者自己填写的 ModelConfig（Key），互不串用。
+    - CLI / 脚本（scripts/*.py）：进程级惰性单例，使用环境变量 Key；
+      若配置指纹变化则自动重建。
+    """
+    ss = _safe_session_state()
+    if ss is not None and ss.get("rag_obj") is not None:
+        return ss["rag_obj"]
+
+    global _process_rag, _process_rag_fp
+    from model.runtime_config import get_effective_config  # noqa: PLC0415
+
+    fp = get_effective_config().fingerprint()
+    if _process_rag is None or _process_rag_fp != fp:
+        _process_rag = RagSummarizeService(model_config=get_effective_config())
+        _process_rag_fp = fp
+    return _process_rag
+
+
+def _safe_session_state():
+    """仅在 streamlit run 运行期返回 session_state，否则返回 None。"""
+    try:
+        import streamlit.runtime  # noqa: PLC0415
+        import streamlit  # noqa: PLC0415
+
+        if not streamlit.runtime.exists():
+            return None
+        return streamlit.session_state
+    except Exception:
+        return None
 
 
 def _read_csv(filename: str) -> list[dict]:
@@ -59,7 +98,7 @@ def _bool(v: str | None) -> bool:
 # ------------------------------------------------------------------
 @tool(description="检索售后政策、退换货规则、保修条款、商品FAQ知识库。凡涉及规则/政策/保修范围的问题都应先调用本工具。")
 def search_policy(query: str) -> str:
-    return _rag.rag_summarize(query, chat_history=None)
+    return get_current_rag().rag_summarize(query, chat_history=None)
 
 
 # ------------------------------------------------------------------

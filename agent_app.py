@@ -1,8 +1,12 @@
 r"""
-ReAct Agent Streamlit app entrypoint.
+「售后小蜜」电商售后智能客服 Agent —— Streamlit 入口。
 
 Run:
     streamlit run agent_app.py
+
+模型接入：
+    访问者可在侧栏填写自己的 DashScope / OpenAI 兼容 API Key（仅存于本浏览器会话）；
+    或（在部署者预置 Key 时）显式启用平台 Key。未配置前不开放问答，避免误耗额度。
 """
 
 import base64
@@ -18,12 +22,11 @@ from utils.secrets_handler import load_cloud_secrets
 
 warnings.filterwarnings("ignore", message=".*coroutine.*expire_cache.*")
 
-# 同步 Streamlit Cloud secrets 到环境变量（必须在导入 chat_service 之前执行，
-# 因为 model.factory 会在 import 期创建 chat_model 并读取 API Key）
+# 同步 Streamlit Cloud secrets 到环境变量（必须在导入 chat_service 之前执行）
 load_cloud_secrets()
 
+from ui import model_panel, render, session  # noqa: E402
 from agent import chat_service  # noqa: E402
-from ui import render, session  # noqa: E402
 
 
 def _encode_image(img_path: str) -> tuple[str | None, str]:
@@ -51,7 +54,8 @@ def _build_llm_text(user_input: str, img_path: str | None) -> tuple[str, str | N
         llm_text = (
             f"{user_input}\n\n"
             f"(The current conversation includes an attached image: {img_path}. "
-            "Decide whether image classification or detection tools are needed.)"
+            "You may mention you've received the image, but image analysis tools "
+            "are not available in this demo.)"
         )
 
     return llm_text, img_b64, img_mime
@@ -72,21 +76,55 @@ def _save_uploaded_image(uploaded_img) -> None:
     st.rerun()
 
 
-def main() -> None:
-    st.set_page_config(page_title="ReAct Agent 问答", layout="wide")
-    st.title("ReAct Agent 智能问答")
-
-    faiss_abs = get_abs_path(faiss_conf.get("persist_directory", "faiss_db"))
-    data_abs = get_abs_path(faiss_conf.get("data_path", "data"))
+def _render_welcome() -> None:
+    st.title("🛒 售后小蜜 · 电商售后智能客服 Agent")
     st.caption(
-        f"向量库：`{faiss_abs}` | 数据：`{data_abs}` | "
-        f"k={faiss_conf.get('k', '')} | 多轮对话 | 报告模式 | CV 推理"
+        "基于 LangGraph ReAct 编排多工具，混合检索 RAG 政策知识库，"
+        "规则引擎兜底合规判定。"
     )
 
+
+def main() -> None:
+    st.set_page_config(page_title="售后小蜜 · Agent 智能客服", layout="wide")
+
+    # 侧栏：模型接入面板（key 仅存会话）
+    model_panel.render_model_panel()
+
+    # 侧栏：可用工具清单
     render.render_sidebar()
 
     session.init()
-    render.render_chat_history(session.get_messages())
+    history = session.get_messages()
+
+    # 顶部状态栏
+    _render_welcome()
+    faiss_abs = get_abs_path(faiss_conf.get("persist_directory", "faiss_db"))
+    data_abs = get_abs_path(faiss_conf.get("data_path", "data"))
+    st.caption(
+        f"知识库：`{data_abs}` | 索引：`{faiss_abs}` | "
+        f"k={faiss_conf.get('k', '')} | 模型来源：{model_panel.config_source_label()}"
+    )
+
+    if not model_panel.is_model_ready():
+        # 引导页：未配置模型时展示项目说明，不开放问答
+        st.info(
+            "### 👋 欢迎体验「售后小蜜」\n\n"
+            "这是一个**多工具售后客服 Agent**，可查询订单/物流/退款、检索售后政策知识库、"
+            "并用规则引擎做合规判定（如七天无理由窗口）。\n\n"
+            "在左侧 **⚙️ 模型接入** 面板中，填入你自己的 **DashScope（阿里云百炼）** 或 "
+            "**OpenAI 兼容** API Key 即可开始。\n\n"
+            "> 安全说明：Key 仅保存在当前浏览器会话中，服务器不存储、不记日志；"
+            "多人访问可各用各的 Key，互不串用。"
+        )
+        try:
+            has_plat = model_panel.has_platform_available()
+        except Exception:
+            has_plat = False
+        if has_plat:
+            st.caption("检测到部署者已预置平台 Key，可在侧栏选择'改用平台预置 Key'。")
+        st.stop()
+
+    render.render_chat_history(history)
 
     attached = session.get_attached_image()
     if attached and os.path.exists(attached):
@@ -115,22 +153,25 @@ def main() -> None:
     session.add_user_message(user_input, llm_text, img_b64, img_mime)
     render.render_user_message(user_input, img_path)
 
-    history = session.get_messages()[:-1]
     final_answer = ""
-
     with st.chat_message("assistant"):
         event_renderer = render.AgentStreamRenderer()
-        for event in chat_service.run_agent(llm_text, history, img_b64, img_mime):
-            if event.get("type") == "stream_end":
-                break
-            result = event_renderer.handle(event)
-            if result:
-                final_answer = result
+        try:
+            for event in chat_service.run_agent(llm_text, history[:-1], img_b64, img_mime):
+                if event.get("type") == "stream_end":
+                    if event.get("status") != "ok":
+                        st.error(event.get("error", "Agent 流异常"))
+                    break
+                result = event_renderer.handle(event)
+                if result:
+                    final_answer = result
+        except Exception as e:
+            st.error(f"Agent 执行出错：{e}")
 
     if final_answer:
-        session.add_assistant_message(final_answer, event_renderer.annotated_images)
+        session.add_assistant_message(final_answer)
     else:
-        st.warning("Agent 未产出最终回答，请检查配置后重试。")
+        st.warning("Agent 未产出最终回答，请检查模型配置后重试。")
 
     session.clear_attached_image()
     st.rerun()
