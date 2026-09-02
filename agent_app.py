@@ -5,8 +5,10 @@ Run:
     streamlit run agent_app.py
 
 模型接入：
-    访问者可在侧栏填写自己的 DashScope / OpenAI 兼容 API Key（仅存于本浏览器会话）；
-    或（在部署者预置 Key 时）显式启用平台 Key。未配置前不开放问答，避免误耗额度。
+    打开页面即可看到对话框。未配置模型前发送消息会提示先配置。
+    - 部署者已在 .env / Secrets 预置 Key：打开即可使用（平台 Key）；
+    - 未预置 Key（公开 Demo）：在侧栏填写自己的 DashScope / OpenAI 兼容 Key。
+    Key 仅存于当前浏览器会话，不落盘、不写日志。
 """
 
 import base64
@@ -84,48 +86,45 @@ def _render_welcome() -> None:
     )
 
 
+def _render_setup_hint() -> None:
+    """模型未就绪时的引导横幅（不阻断对话框）。"""
+    source = model_panel.config_source_label()
+    if model_panel.is_model_ready():
+        return
+    st.warning(
+        "#### 👋 开始前，先配置模型\n\n"
+        "当前尚未检测到可用的 API Key。请在左侧 **⚙️ 模型接入** 面板中填入你自己的 "
+        "**DashScope（阿里云百炼）** 或 **OpenAI 兼容** API Key 后即可对话。\n\n"
+        "> 安全说明：Key 仅保存在当前浏览器会话中，服务器不存储、不记日志；"
+        "多人访问可各用各的 Key，互不串用。"
+    )
+
+
 def main() -> None:
     st.set_page_config(page_title="售后小蜜 · Agent 智能客服", layout="wide")
 
-    # 侧栏：模型接入面板（key 仅存会话）
+    # 侧栏：模型接入面板 + 可用工具
     model_panel.render_model_panel()
-
-    # 侧栏：可用工具清单
     render.render_sidebar()
 
     session.init()
     history = session.get_messages()
 
-    # 顶部状态栏
     _render_welcome()
     faiss_abs = get_abs_path(faiss_conf.get("persist_directory", "faiss_db"))
     data_abs = get_abs_path(faiss_conf.get("data_path", "data"))
     st.caption(
         f"知识库：`{data_abs}` | 索引：`{faiss_abs}` | "
-        f"k={faiss_conf.get('k', '')} | 模型来源：{model_panel.config_source_label()}"
+        f"k={faiss_conf.get('k', '')} | 模型：{model_panel.config_source_label()}"
     )
 
-    if not model_panel.is_model_ready():
-        # 引导页：未配置模型时展示项目说明，不开放问答
-        st.info(
-            "### 👋 欢迎体验「售后小蜜」\n\n"
-            "这是一个**多工具售后客服 Agent**，可查询订单/物流/退款、检索售后政策知识库、"
-            "并用规则引擎做合规判定（如七天无理由窗口）。\n\n"
-            "在左侧 **⚙️ 模型接入** 面板中，填入你自己的 **DashScope（阿里云百炼）** 或 "
-            "**OpenAI 兼容** API Key 即可开始。\n\n"
-            "> 安全说明：Key 仅保存在当前浏览器会话中，服务器不存储、不记日志；"
-            "多人访问可各用各的 Key，互不串用。"
-        )
-        try:
-            has_plat = model_panel.has_platform_available()
-        except Exception:
-            has_plat = False
-        if has_plat:
-            st.caption("检测到部署者已预置平台 Key，可在侧栏选择'改用平台预置 Key'。")
-        st.stop()
+    # 未配置模型时展示引导（但不隐藏对话框）
+    _render_setup_hint()
 
+    # 聊天历史
     render.render_chat_history(history)
 
+    # 图片附件
     attached = session.get_attached_image()
     if attached and os.path.exists(attached):
         render.render_image_attachment(
@@ -146,6 +145,12 @@ def main() -> None:
     user_input = st.chat_input("输入问题，Agent 会自主思考并调用工具")
     if not user_input:
         return
+
+    # 发送前校验模型配置：未配置则明确提示并保留输入（不调用 Agent）
+    if not model_panel.is_model_ready():
+        st.error("模型尚未配置，请先在左侧 ⚙️ 模型接入 面板填写 API Key。")
+        session.add_user_message(user_input, user_input)  # 保留用户输入可见
+        st.stop()
 
     img_path = session.get_attached_image()
     llm_text, img_b64, img_mime = _build_llm_text(user_input, img_path)

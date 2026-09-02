@@ -12,10 +12,11 @@ import streamlit as st
 from model.factory import DASHSCOPE_URL_FALLBACK
 from model.runtime_config import (
     ModelConfig,
+    clear_session_config,
+    config_source,
+    get_platform_config,
     get_session_config,
-    has_platform_key,
     save_session_config,
-    use_platform_config,
 )
 
 # 常见预设
@@ -75,39 +76,50 @@ def config_source_label() -> str:
     cfg = get_session_config()
     if not cfg.is_ready():
         return "未配置"
-    own = _session_config()
-    if own is not None and own.api_key:
-        return f"访问者自带 Key：{cfg.display_label()}"
-    return f"平台预置 Key：{cfg.display_label()}"
+    src = config_source()
+    model = cfg.chat_model or "?"
+    if src == "user":
+        return f"访问者 Key（{model}）"
+    if src == "platform":
+        return f"平台预置 Key（{model}）"
+    return "未配置"
 
 
 def is_model_ready() -> bool:
-    """是否有可用配置（访问者自填或显式启用平台 Key 均可）。"""
+    """是否有可用配置（访问者自填 或 部署者平台预置均可）。"""
     return get_session_config().is_ready()
 
 
 def has_platform_available() -> bool:
-    """部署者是否预置 Key 且当前会话未自填。"""
-    return has_platform_key() and _session_config() is None
+    """部署者是否预置 Key 且当前会话未自填（此时可直接"改用自己的 Key"）。"""
+    return config_source() == "platform" and _session_config() is None
 
 
 def render_model_panel() -> None:
     """渲染模型接入面板（放在侧栏）。"""
     st.sidebar.subheader("⚙️ 模型接入")
 
-    # ---- 当前来源状态提示 ----
     own = _session_config()
-    if own is not None and own.api_key:
-        st.sidebar.success(f"当前使用 **你填写的 Key**（{own.chat_model}）")
-    elif has_platform_available():
+    src = config_source()
+
+    # ---- 当前来源状态提示 ----
+    if src == "none":
         st.sidebar.warning(
-            "当前将使用**平台预置 Key**。若这是公开演示，访问者会消耗部署者额度。"
+            "尚未配置模型。\n\n在下方填写你自己的 API Key 即可开始对话。"
         )
-    else:
-        st.sidebar.warning("尚未配置模型。请填写你自己的 API Key 后使用。")
+    elif src == "platform":
+        cfg = get_session_config()
+        st.sidebar.info(
+            f"正在使用**平台预置 Key**（{cfg.chat_model}）。\n\n"
+            "若这是公开 Demo，访问者会消耗部署者额度；你也可以在下方改用自己的 Key。"
+        )
+    else:  # user
+        st.sidebar.success(
+            f"正在使用**你填写的 Key**（{own.chat_model if own else '?'}）。"
+        )
 
     # ---- 访问者自填表单 ----
-    with st.sidebar.expander("🔑 填写自己的 API Key", expanded=own is None):
+    with st.sidebar.expander("🔑 填写 / 更换自己的 API Key", expanded=src == "none"):
         preset = st.selectbox(
             "服务商预设", list(_PRESETS.keys()), key="mp_preset",
             help="选择预设自动填充默认地址与模型名，仍可手动修改。",
@@ -161,13 +173,14 @@ def render_model_panel() -> None:
                 st.sidebar.success("已保存，Agent 将按你的配置重建。")
                 st.rerun()
 
-    # ---- 明确启用平台预置 Key ----
-    if has_platform_available():
-        if st.sidebar.button("改用平台预置 Key", use_container_width=True):
-            use_platform_config()
+    # ---- 已自填时：可一键回到平台预置 Key（若部署者配置了） ----
+    if own is not None and get_platform_config().is_ready():
+        if st.sidebar.button("清除我的 Key，改用平台预置", use_container_width=True):
+            clear_session_config()
             st.rerun()
 
     st.sidebar.markdown("---")
     st.sidebar.caption(
-        "安全提示：Key 只保存在你的浏览器会话，服务器不存储。刷新页面后需重新填写。"
+        "安全说明：Key 仅保存在你的浏览器会话，服务器不存储、不写日志；"
+        "多人访问各用各的 Key，互不串用。"
     )

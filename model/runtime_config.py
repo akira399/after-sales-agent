@@ -88,18 +88,39 @@ def _st_key() -> str:
 
 
 def get_effective_config() -> ModelConfig:
-    """获取"真正用于构建模型"的配置。
+    """获取"真正用于构建模型"的配置（always-available）。
 
-    - Streamlit 环境：只认会话配置（访问者自填 或 显式启用平台 Key）。
-      会话无配置时返回空配置（is_ready=False），由 UI 引导填写。
-    - 非 Streamlit 环境（CLI/scripts）：直接使用环境变量/.env 配置。
+    优先级：
+      1. Streamlit 会话中访问者自填的配置（save_session_config）
+      2. 环境变量 / .env / 云端 Secrets 的平台预置 Key（部署者配置 = 期望可用）
+      3. 空配置（is_ready=False，UI 引导填写）
+
+    即：部署者配了 Key（本地 .env 或云端 Secrets）则打开即可用；
+    完全没配（纯公开 Demo）则引导访问者自带 Key。
     """
     ss = _session_state()
     if ss is not None:
         cfg = ss.get(_st_key())
         if isinstance(cfg, ModelConfig):
             return cfg
-        return ModelConfig()  # 空配置：UI 层会引导填写
+    return _load_env_config()
+
+
+def config_source() -> str:
+    """当前配置来源：user(访问者自带) | platform(部署者预置) | none(无)。"""
+    ss = _session_state()
+    if ss is not None:
+        cfg = ss.get(_st_key())
+        if isinstance(cfg, ModelConfig) and cfg.is_ready():
+            return "user"
+    cfg = _load_env_config()
+    if cfg.is_ready():
+        return "platform"
+    return "none"
+
+
+def get_platform_config() -> ModelConfig:
+    """返回部署者预置的平台配置（.env / Secrets，不受会话自填影响）。"""
     return _load_env_config()
 
 
