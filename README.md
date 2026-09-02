@@ -135,7 +135,37 @@ python scripts/test_agent.py     # 测试 Agent 工具调用链路
 
 ---
 
-## 六、项目结构
+## 六、效果截图
+
+### 概览：侧栏模型接入 + 多工具调用过程
+
+![概览](assets/screenshot-1-overview.png)
+
+- 侧栏自动识别部署者预置 Key，可一键替换为自己的 Key
+- 中间栏展示用户问题 → 工具调用轨迹（`get_current_date` → `query_user_orders`），按事件流逐条展开
+- 底部聊天输入框始终可见，发送后即时渲染 Agent 推理过程
+
+### 政策问答：激活商品不适用七天无理由的合规判定
+
+![政策问答](assets/screenshot-2-policy-qa.png)
+
+- Agent 自动串联 `query_order` 与 `search_policy`，从知识库召回《七日无理由退货暂行办法》原文
+- 答复严格区分"无理由退货"与"质量问题换货"两种权利，提供可执行的替代方案
+- 全部依据标注来源，符合售后合规诉求
+
+### 多工具协同：模糊查询下识别真实订单
+
+![多工具协同](assets/screenshot-3-multi-tool.png)
+
+- 用户问"我买的耳机"，Agent 通过 `query_order` 比对签收日期，主动指出"8-28 签收的其实是智能手表非耳机"
+- 顺带列出其余订单的相关退货窗口状态，避免误退
+- 体现"工具自主决策 + 事实取证"的多步推理能力
+
+> 截图均为本地 `streamlit run agent_app.py` 的实际运行画面，演示数据见 `data/external/`。
+
+---
+
+## 七、项目结构
 
 ```
 .
@@ -168,7 +198,7 @@ python scripts/test_agent.py     # 测试 Agent 工具调用链路
 
 ---
 
-## 七、安全设计说明
+## 八、安全设计说明
 
 1. **Key 零存储**：API Key 只存在于浏览器 `session_state`（访问者模式）或部署者环境变量（平台模式），代码仓库与日志中绝无明文 Key。
 2. **日志脱敏**：`middleware.py` 对工具入参做递归脱敏，敏感字段（api_key/token/secret/…）一律替换为 `***REDACTED***`。
@@ -194,7 +224,7 @@ python scripts/test_agent.py     # 测试 Agent 工具调用链路
 
 ---
 
-## 十、后续可扩展
+## 十一、后续可扩展
 
 - [ ] 接入真实订单/物流/退款 API（替换 CSV 读取层即可）
 - [ ] 多轮会话持久化（SQLite）+ 用户实体槽位记忆
@@ -204,6 +234,6 @@ python scripts/test_agent.py     # 测试 Agent 工具调用链路
 
 ---
 
-## 十一、License
+## 十二、License
 
 MIT
